@@ -528,7 +528,7 @@ async def process_confirm(callback: CallbackQuery, state: FSMContext):
     admin_text = f"🚨 <b>НОВА ЗАЯВКА</b> 🚨\n\n👤 Пацієнт: {name}\n📱 Телефон: {phone}\n🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n📅 Дата: {data['date']}\n🕐 Час: {data['time']}"
     await bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="HTML")
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Скасувати запис", callback_data=f"cancel_{data['date']}_{data['time']}")]])
-       await callback.message.answer(
+    await callback.message.answer(
         f"✅ <b>Дякуємо, {name}!</b>\n\n"
         f"Ви успішно записані:\n🦷 {data['service']}\n📅 {data['date']} о {data['time']}\n\n"
         f"Якщо ваші плани зміняться, натисніть кнопку нижче.",
