@@ -201,6 +201,41 @@ async def start_quiz(message: Message, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("quiz_"))
 async def process_quiz(callback: CallbackQuery, state: FSMContext):
+    if callback.data == "quiz_back":
+        await callback.message.delete()
+        await callback.message.answer("Що вас турбує найбільше?", reply_markup=get_quiz_inline())
+        await callback.answer()
+        return
+
+    if callback.data == "quiz_confirm":
+        # Когда пациент нажал "Записаться" в квизе, мы берем данные, которые сохранили ранее, 
+        # и запускаем стандартный шаг выбора даты.
+        await callback.message.delete()
+        data = await state.get_data()
+        
+        # Проверяем, есть ли сохраненные данные (имя/телефон)
+        if data.get('saved_name') and data.get('saved_phone'):
+             # Если пациент уже есть в базе, пропускаем ввод имени и сразу даем выбрать дату
+             await state.set_state(BookingForm.date)
+             await callback.message.answer(
+                f"Ви обрали: <b>{data['service']}</b> (Лікар: {data['doctor']}).\n\n"
+                f"Крок 1 з 2. Оберіть бажану дату:",
+                parse_mode="HTML",
+                reply_markup=get_dates_inline()
+            )
+        else:
+            # Если это новый пациент, ведем его по обычному пути
+            await state.set_state(BookingForm.date)
+            await callback.message.answer(
+                f"Ви обрали: <b>{data['service']}</b> (Лікар: {data['doctor']}).\n\n"
+                f"Крок 1 з 4. Оберіть бажану дату:",
+                parse_mode="HTML",
+                reply_markup=get_dates_inline()
+            )
+        await callback.answer()
+        return
+
+    # Обработка выбора симптома
     quiz_type = callback.data.split("_")[1]
     await callback.message.delete()
 
@@ -222,28 +257,6 @@ async def process_quiz(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="⬅️ Назад до вибору", callback_data="quiz_back")]
     ])
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
-    await callback.answer()
-
-@dp.callback_query(F.data == "quiz_back")
-async def quiz_back(callback: CallbackQuery):
-    await callback.message.delete()
-    await callback.message.answer("Що вас турбує найбільше?", reply_markup=get_quiz_inline())
-    await callback.answer()
-
-@dp.callback_query(F.data == "quiz_confirm")
-async def quiz_confirm(callback: CallbackQuery, state: FSMContext):
-    await callback.message.delete()
-    
-    # ВАЖНО: Переводим бота в состояние выбора даты, чтобы он ждал нажатия на кнопку!
-    await state.set_state(BookingForm.date)
-    
-    data = await state.get_data()
-    await callback.message.answer(
-        f"Ви обрали: <b>{data['service']}</b> (Лікар: {data['doctor']}).\n\n"
-        f"Крок 1 з 3. Оберіть бажану дату:",
-        parse_mode="HTML",
-        reply_markup=get_dates_inline()
-    )
     await callback.answer()
 
 # ==========================================
