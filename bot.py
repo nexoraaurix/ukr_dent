@@ -13,8 +13,8 @@ from aiogram.fsm.state import State, StatesGroup
 # ==========================================
 # НАСТРОЙКИ
 # ==========================================
-BOT_TOKEN = "ТВОЙ_ТОКЕН_БОТА"
-ADMIN_CHAT_ID = ТВОЙ_ID_ЧИСЛОМ
+BOT_TOKEN = "9080785576:AAF3vuF-fK1IhMpp56imPClN3qGXPGhUUhI"
+ADMIN_CHAT_ID = 5187923987
 GOOGLE_MAPS_REVIEW_URL = "https://maps.google.com/?q=Київ,вул.Хрещатик,15" 
 
 logging.basicConfig(level=logging.INFO)
@@ -602,18 +602,94 @@ async def scheduled_tasks():
             appointments = load_json(APPOINTMENTS_FILE, [])
             now = datetime.now()
             changed = False
+            
             for appt in appointments:
                 try:
                     appt_datetime = datetime.strptime(f"{appt['date']} {appt['time']}", "%d.%m.%Y %H:%M")
                 except ValueError:
                     continue
+                
                 time_diff = appt_datetime - now
+                
+                # Напоминание за 2 часа
                 if not appt["notified"] and timedelta(0) < time_diff <= timedelta(hours=2):
                     try:
-                        await bot.send_message(appt["chat_id"], f"🔔 <b>Нагадування!</b>\n\nСьогодні о <b>{appt['time']}</b> у вас прийом.\nПослуга: {appt['service']}", parse_mode="HTML")
+                        msg_text = (
+                            f"🔔 <b>Нагадування!</b>\n\n"
+                            f"Сьогодні о <b>{appt['time']}</b> у вас прийом.\n"
+                            f"Послуга: {appt['service']}"
+                        )
+                        await bot.send_message(
+                            appt["chat_id"], 
+                            msg_text, 
+                            parse_mode="HTML"
+                        )
                         appt["notified"] = True
                         changed = True
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.error(f"Ошибка напоминания: {e}")
+                
+                # Отзыв через 3 часа после визита
                 if not appt["review_sent"] and time_diff < timedelta(hours=-3):
-                   
+                    try:
+                        review_text = (
+                            f"Добрий день, {appt['name']}! 🦷\n\n"
+                            f"Сподіваємося, ваш візит пройшов добре. "
+                            f"Будемо дуже вдячні, якщо ви залишите відгук!"
+                        )
+                        kb = InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="⭐ Залишити відгук", url=GOOGLE_MAPS_REVIEW_URL)]
+                        ])
+                        await bot.send_message(
+                            appt["chat_id"], 
+                            review_text, 
+                            parse_mode="HTML",
+                            reply_markup=kb
+                        )
+                        appt["review_sent"] = True
+                        changed = True
+                    except Exception as e:
+                        logging.error(f"Ошибка отправки отзыва: {e}")
+            
+            if changed:
+                save_json(APPOINTMENTS_FILE, appointments)
+                
+        except Exception as e:
+            logging.error(f"Ошибка в фоновой задаче: {e}")
+            
+        # Проверяем каждые 5 минут
+        await asyncio.sleep(300)
+
+# ==========================================
+# ОБРАБОТКА НЕИЗВЕСТНЫХ СООБЩЕНИЙ
+# ==========================================
+@dp.message()
+async def unknown_message(message: Message):
+    await message.answer(
+        "🤖 Я вас не зрозумів. Скористайтеся кнопками меню 👇", 
+        reply_markup=get_main_menu()
+    )
+
+# ==========================================
+# ЗАПУСК
+# ==========================================
+async def main():
+    print("Бот запущен...")
+    
+    # Запускаем фоновую задачу для напоминаний и отзывов
+    asyncio.create_task(scheduled_tasks())
+    
+    # Фейковый веб-сервер для Render (чтобы сервис не падал)
+    app = web.Application()
+    app.router.add_get("/", lambda r: web.Response(text="UkrDent Bot is alive!"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    # Запуск самого бота
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
