@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import json
+import re
 from datetime import datetime, timedelta
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F
@@ -63,15 +64,9 @@ def unbook_time(date, time):
 def add_appointment(chat_id, name, phone, service, doctor, date, time):
     appointments = load_json(APPOINTMENTS_FILE, [])
     appointments.append({
-        "chat_id": chat_id,
-        "name": name,
-        "phone": phone,
-        "service": service,
-        "doctor": doctor,
-        "date": date,
-        "time": time,
-        "notified": False,
-        "review_sent": False
+        "chat_id": chat_id, "name": name, "phone": phone, 
+        "service": service, "doctor": doctor, "date": date, "time": time,
+        "notified": False, "review_sent": False
     })
     save_json(APPOINTMENTS_FILE, appointments)
 
@@ -105,7 +100,7 @@ class EmergencyForm(StatesGroup):
 def get_main_menu():
     kb = [
         [KeyboardButton(text="🚨 У мене гострий біль!")],
-        [KeyboardButton(text="🤔 Допоможіть обрати послугу")], # Новая кнопка
+        [KeyboardButton(text="🤔 Допоможіть обрати послугу")],
         [KeyboardButton(text="🦷 Записатися на прийом")],
         [KeyboardButton(text="💰 Послуги та ціни"), KeyboardButton(text="👨‍⚕️ Наші лікарі")],
         [KeyboardButton(text="📍 Як дістатися"), KeyboardButton(text="📞 Контакти")]
@@ -141,8 +136,7 @@ def get_dates_inline():
     for i in range(1, 8):
         date = today + timedelta(days=i)
         date_str = date.strftime("%d.%m.%Y")
-        if is_day_closed(date_str):
-            continue
+        if is_day_closed(date_str): continue
         wd = weekdays[date.weekday()]
         month = months[date.month - 1]
         kb.append([InlineKeyboardButton(text=f"{wd}, {date.day} {month}", callback_data=f"date_{date_str}")])
@@ -161,8 +155,7 @@ def get_time_inline(date):
             if len(row) == 2:
                 kb.append(row)
                 row = []
-    if row:
-        kb.append(row)
+    if row: kb.append(row)
     if not kb:
         kb.append([InlineKeyboardButton(text="❌ На цей день всі місця зайняті", callback_data="no_times")])
     kb.append([InlineKeyboardButton(text="⬅️ Назад до дат", callback_data="back_to_dates")])
@@ -186,9 +179,6 @@ def get_saved_user_inline(name):
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-# ==========================================
-# УМНЫЙ КОНСУЛЬТАНТ (КВИЗ)
-# ==========================================
 def get_quiz_inline():
     kb = [
         [InlineKeyboardButton(text="😣 Біль або запалення", callback_data="quiz_pain")],
@@ -199,6 +189,9 @@ def get_quiz_inline():
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
+# ==========================================
+# УМНЫЙ КОНСУЛЬТАНТ (КВИЗ)
+# ==========================================
 @dp.message(F.text == "🤔 Допоможіть обрати послугу")
 async def start_quiz(message: Message, state: FSMContext):
     await message.answer(
@@ -212,36 +205,16 @@ async def process_quiz(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
 
     if quiz_type == "pain":
-        text = (
-            "Зрозуміло. Найкраще рішення — <b>Консультація терапевта</b>.\n"
-            "Лікар огляне, визначить причину болю та складе план лікування.\n\n"
-            "Бажаєте записатися до терапевта Олега Іванова?"
-        )
+        text = "Зрозуміло. Найкраще рішення — <b>Консультація терапевта</b>.\nЛікар огляне, визначить причину болю та складе план лікування.\n\nБажаєте записатися до терапевта Олега Іванова?"
         await state.update_data(service="Консультація", doctor="Олег Іванов (Терапевт)")
-    
     elif quiz_type == "aesthetic":
-        text = (
-            "Зрозуміло. Для покращення естетики рекомендуємо <b>Професійну чистку</b> та консультацію терапевта.\n"
-            "Це видалить наліт, поверне природній колір та свіжість.\n\n"
-            "Бажаєте записатися на чистку?"
-        )
+        text = "Зрозуміло. Для покращення естетики рекомендуємо <b>Професійну чистку</b> та консультацію терапевта.\nЦе видалить наліт, поверне природній колір та свіжість.\n\nБажаєте записатися на чистку?"
         await state.update_data(service="Професійна чистка", doctor="Будь-який лікар")
-    
     elif quiz_type == "missing":
-        text = (
-            "Зрозуміло. Найкращим рішенням буде <b>Імплантація</b>.\n"
-            "Це дозволить відновити жувальну функцію та захистити сусідні зуби.\n"
-            "У нас цим займається хірург-імплантолог Андрій В. (стаж 10 років).\n\n"
-            "Бажаєте записатися на консультацію до Андрія?"
-        )
+        text = "Зрозуміло. Найкращим рішенням буде <b>Імплантація</b>.\nЦе дозволить відновити жувальну функцію та захистити сусідні зуби.\nУ нас цим займається хірург-імплантолог Андрій В. (стаж 10 років).\n\nБажаєте записатися на консультацію до Андрія?"
         await state.update_data(service="Імплантація", doctor="Андрій В. (Хірург)")
-    
     elif quiz_type == "uneven":
-        text = (
-            "Зрозуміло. Для вирівнювання зубів рекомендуємо <b>Брекети</b>.\n"
-            "Наш ортодонт Марія Петрівна (стаж 12 років) підбере оптимальну систему.\n\n"
-            "Бажаєте записатися на консультацію до Марії?"
-        )
+        text = "Зрозуміло. Для вирівнювання зубів рекомендуємо <b>Брекети</b>.\nНаш ортодонт Марія Петрівна (стаж 12 років) підбере оптимальну систему.\n\nБажаєте записатися на консультацію до Марії?"
         await state.update_data(service="Брекети", doctor="Марія Петрівна (Ортодонт)")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -260,6 +233,8 @@ async def quiz_back(callback: CallbackQuery):
 @dp.callback_query(F.data == "quiz_confirm")
 async def quiz_confirm(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
+    
+    # ВАЖНО: Переводим бота в состояние выбора даты, чтобы он ждал нажатия на кнопку!
     await state.set_state(BookingForm.date)
     
     data = await state.get_data()
@@ -307,8 +282,7 @@ async def admin_close_day(callback: CallbackQuery):
     for i in range(1, 8):
         date = today + timedelta(days=i)
         date_str = date.strftime("%d.%m.%Y")
-        if is_day_closed(date_str):
-            continue
+        if is_day_closed(date_str): continue
         wd = weekdays[date.weekday()]
         month = months[date.month - 1]
         kb.append([InlineKeyboardButton(text=f"{wd}, {date.day} {month}", callback_data=f"close_{date_str}")])
@@ -325,35 +299,37 @@ async def process_close_day(callback: CallbackQuery):
     await callback.answer()
 
 # ==========================================
-# СРОЧНАЯ ПОМОЩЬ
+# СРОЧНАЯ ПОМОЩЬ (С ВОЗМОЖНОСТЬЮ ВВОДА ТЕКСТОМ)
 # ==========================================
 @dp.message(F.text == "🚨 У мене гострий біль!")
 async def start_emergency(message: Message, state: FSMContext):
     await state.set_state(EmergencyForm.phone)
     await message.answer(
-        "Зрозуміло! Залиште свій номер телефону, і адміністратор зателефонує вам протягом 5 хвилин.",
+        "Зрозуміло! Залиште свій номер телефону (натисніть кнопку нижче або напишіть вручну), і адміністратор зателефонує вам протягом 5 хвилин.",
         reply_markup=get_phone_keyboard()
     )
 
 @dp.message(EmergencyForm.phone, F.contact)
 async def process_emergency_contact(message: Message, state: FSMContext):
     phone = message.contact.phone_number
-    if not phone.startswith("+"):
-        phone = "+" + phone
+    if not phone.startswith("+"): phone = "+" + phone
     await state.clear()
-    admin_text = (
-        f"🚨🚨🚨 <b>ТЕРМІНОВА ЗАЯВКА!</b> 🚨🚨🚨\n\n"
-        f"Пацієнт скаржиться на <b>гострий біль</b>!\n"
-        f"📱 Телефон: <b>{phone}</b>\n"
-        f"👤 Telegram: @{message.from_user.username}"
-    )
+    admin_text = f"🚨🚨🚨 <b>ТЕРМІНОВА ЗАЯВКА!</b> 🚨🚨🚨\n\nПацієнт скаржиться на <b>гострий біль</b>!\n📱 Телефон: <b>{phone}</b>\n👤 Telegram: @{message.from_user.username}"
     await bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="HTML")
-    await message.answer(
-        "✅ <b>Ваш номер передано адміністратору!</b>\n\n"
-        "Ми зателефонуємо вам найближчим часом.",
-        parse_mode="HTML",
-        reply_markup=get_main_menu()
-    )
+    await message.answer("✅ <b>Ваш номер передано адміністратору!</b>\n\nМи зателефонуємо вам найближчим часом.", parse_mode="HTML", reply_markup=get_main_menu())
+
+@dp.message(EmergencyForm.phone, F.text)
+async def process_emergency_text(message: Message, state: FSMContext):
+    # Если пациент ввел номер текстом (проверяем, чтобы было хотя бы 10 цифр)
+    text = message.text.strip()
+    if len(re.sub(r'\D', '', text)) < 10:
+        await message.answer("❌ Будь ласка, введіть коректний номер телефону (наприклад, +380991234567) або натисніть кнопку.")
+        return
+        
+    await state.clear()
+    admin_text = f"🚨🚨🚨 <b>ТЕРМІНОВА ЗАЯВКА!</b> 🚨🚨🚨\n\nПацієнт скаржиться на <b>гострий біль</b>!\n📱 Телефон: <b>{text}</b>\n👤 Telegram: @{message.from_user.username}"
+    await bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="HTML")
+    await message.answer("✅ <b>Ваш номер передано адміністратору!</b>\n\nМи зателефонуємо вам найближчим часом.", parse_mode="HTML", reply_markup=get_main_menu())
 
 # ==========================================
 # ОБРАБОТКА КОМАНД И МЕНЮ
@@ -361,11 +337,7 @@ async def process_emergency_contact(message: Message, state: FSMContext):
 @dp.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(
-        f"Вітаємо у стоматології «UkrDent»! 🦷\n\n"
-        f"Оберіть потрібний пункт у меню нижче 👇",
-        reply_markup=get_main_menu()
-    )
+    await message.answer(f"Вітаємо у стоматології «UkrDent»! 🦷\n\nОберіть потрібний пункт у меню нижче 👇", reply_markup=get_main_menu())
 
 @dp.message(F.text == "💰 Послуги та ціни")
 async def show_prices(message: Message):
@@ -392,11 +364,7 @@ async def start_booking_cb(callback: CallbackQuery, state: FSMContext):
     user = get_user(callback.from_user.id)
     if user:
         await state.update_data(saved_name=user['name'], saved_phone=user['phone'])
-        await callback.message.answer(
-            f"Вітаємо знову, <b>{user['name']}</b>! Бажаєте записатися знову на ці ж дані?",
-            parse_mode="HTML",
-            reply_markup=get_saved_user_inline(user['name'])
-        )
+        await callback.message.answer(f"Вітаємо знову, <b>{user['name']}</b>! Бажаєте записатися знову на ці ж дані?", parse_mode="HTML", reply_markup=get_saved_user_inline(user['name']))
     else:
         await state.set_state(BookingForm.service)
         await callback.message.answer("Крок 1 з 5. Оберіть послугу:", reply_markup=get_services_inline())
@@ -407,11 +375,7 @@ async def start_booking_text(message: Message, state: FSMContext):
     user = get_user(message.from_user.id)
     if user:
         await state.update_data(saved_name=user['name'], saved_phone=user['phone'])
-        await message.answer(
-            f"Вітаємо знову, <b>{user['name']}</b>! Бажаєте записатися знову?",
-            parse_mode="HTML",
-            reply_markup=get_saved_user_inline(user['name'])
-        )
+        await message.answer(f"Вітаємо знову, <b>{user['name']}</b>! Бажаєте записатися знову?", parse_mode="HTML", reply_markup=get_saved_user_inline(user['name']))
     else:
         await state.set_state(BookingForm.service)
         await message.answer("Крок 1 з 5. Оберіть послугу:", reply_markup=get_services_inline())
@@ -502,12 +466,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if data.get('saved_name') and data.get('saved_phone'):
         await state.set_state(BookingForm.confirm)
-        summary = (
-            f"📋 <b>Перевірте ваші дані:</b>\n\n"
-            f"👤 Ім'я: {data['saved_name']}\n📱 Телефон: {data['saved_phone']}\n"
-            f"🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n"
-            f"📅 Дата: {data['date']}\n🕐 Час: {data['time']}\n\nВсе вірно?"
-        )
+        summary = f"📋 <b>Перевірте ваші дані:</b>\n\n👤 Ім'я: {data['saved_name']}\n📱 Телефон: {data['saved_phone']}\n🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n📅 Дата: {data['date']}\n🕐 Час: {data['time']}\n\nВсе вірно?"
         await callback.message.answer(summary, parse_mode="HTML", reply_markup=get_confirm_inline())
     else:
         await state.set_state(BookingForm.name)
@@ -518,22 +477,30 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
 async def process_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
     await state.set_state(BookingForm.phone)
-    await message.answer(f"Дякую, {message.text}!\n\nТепер поділіться своїм номером телефону 👇", reply_markup=get_phone_keyboard())
+    await message.answer(f"Дякую, {message.text}!\n\nТепер поділіться своїм номером телефону (натисніть кнопку нижче або напишіть вручну) 👇", reply_markup=get_phone_keyboard())
 
 @dp.message(BookingForm.phone, F.contact)
 async def process_phone_contact(message: Message, state: FSMContext):
     phone = message.contact.phone_number
-    if not phone.startswith("+"):
-        phone = "+" + phone
+    if not phone.startswith("+"): phone = "+" + phone
     await state.update_data(phone=phone)
     data = await state.get_data()
     await state.set_state(BookingForm.confirm)
-    summary = (
-        f"📋 <b>Перевірте ваші дані:</b>\n\n"
-        f"👤 Ім'я: {data['name']}\n📱 Телефон: {data['phone']}\n"
-        f"🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n"
-        f"📅 Дата: {data['date']}\n🕐 Час: {data['time']}\n\nВсе вірно?"
-    )
+    summary = f"📋 <b>Перевірте ваші дані:</b>\n\n👤 Ім'я: {data['name']}\n📱 Телефон: {data['phone']}\n🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n📅 Дата: {data['date']}\n🕐 Час: {data['time']}\n\nВсе вірно?"
+    await message.answer(summary, parse_mode="HTML", reply_markup=get_confirm_inline())
+
+@dp.message(BookingForm.phone, F.text)
+async def process_phone_text(message: Message, state: FSMContext):
+    # Проверяем, похоже ли это на номер телефона
+    text = message.text.strip()
+    if len(re.sub(r'\D', '', text)) < 10:
+        await message.answer("❌ Будь ласка, введіть коректний номер телефону (наприклад, +380991234567) або натисніть кнопку.")
+        return
+    
+    await state.update_data(phone=text)
+    data = await state.get_data()
+    await state.set_state(BookingForm.confirm)
+    summary = f"📋 <b>Перевірте ваші дані:</b>\n\n👤 Ім'я: {data['name']}\n📱 Телефон: {data['phone']}\n🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n📅 Дата: {data['date']}\n🕐 Час: {data['time']}\n\nВсе вірно?"
     await message.answer(summary, parse_mode="HTML", reply_markup=get_confirm_inline())
 
 @dp.callback_query(BookingForm.confirm)
@@ -558,17 +525,10 @@ async def process_confirm(callback: CallbackQuery, state: FSMContext):
     save_user(callback.from_user.id, name, phone)
     await state.clear()
     await callback.message.delete()
-    admin_text = (
-        f"🚨 <b>НОВА ЗАЯВКА</b> 🚨\n\n"
-        f"👤 Пацієнт: {name}\n📱 Телефон: {phone}\n"
-        f"🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n"
-        f"📅 Дата: {data['date']}\n🕐 Час: {data['time']}"
-    )
+    admin_text = f"🚨 <b>НОВА ЗАЯВКА</b> 🚨\n\n👤 Пацієнт: {name}\n📱 Телефон: {phone}\n🦷 Послуга: {data['service']}\n👨‍⚕️ Лікар: {data['doctor']}\n📅 Дата: {data['date']}\n🕐 Час: {data['time']}"
     await bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="HTML")
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Скасувати запис", callback_data=f"cancel_{data['date']}_{data['time']}")]
-    ])
-    await callback.message.answer(
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Скасувати запис", callback_data=f"cancel_{data['date']}_{data['time']}")]])
+       await callback.message.answer(
         f"✅ <b>Дякуємо, {name}!</b>\n\n"
         f"Ви успішно записані:\n🦷 {data['service']}\n📅 {data['date']} о {data['time']}\n\n"
         f"Якщо ваші плани зміняться, натисніть кнопку нижче.",
@@ -691,5 +651,7 @@ async def main():
     # Запуск самого бота
     await dp.start_polling(bot)
 
+if __name__ == "__main__":
+    asyncio.run(main())
 if __name__ == "__main__":
     asyncio.run(main())
